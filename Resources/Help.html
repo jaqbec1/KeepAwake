@@ -1,0 +1,12 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Keep Awake user guide</title>
+<style>:root{color-scheme:light dark}body{font:16px/1.6 system-ui;max-width:660px;margin:48px auto;padding:0 24px}h1{font-size:30px}h2{font-size:21px;margin-top:32px}code{font-size:14px}li{margin:8px 0}</style>
+<h1>Keep Awake</h1><p>Click the cup in the menu bar, choose your options, and start a session. A filled cup and countdown show that a session is running. Left-click or right-click the cup to open the native macOS menu.</p>
+<h2>Choose a mode</h2><ul><li>With <strong>Keep awake with lid closed</strong> unchecked, the app prevents idle sleep. You can allow the display to sleep or keep it on. Closing the lid can still put the Mac to sleep.</li><li>Check <strong>Keep awake with lid closed</strong> to keep work running with the lid shut. macOS asks for administrator approval for each session. The display is put to sleep when the lid closes.</li></ul>
+<p>Only while plugged in is on by default. Turn it off to use a battery cutoff. Sessions also end if macOS reports serious or critical thermal pressure. Keep the Mac on a ventilated desk and stop before putting it in a bag.</p>
+<h2>Stop a session</h2><p>Click Stop session, wait for the timer, or quit Keep Awake. Closed-lid sessions also end if the app quits unexpectedly or stops sending its heartbeat for 20 seconds.</p>
+<p>The app preserves your screen-lock settings. Lock the Mac yourself before leaving it unattended. Background jobs can continue while locked, but UI automation can require an unlocked display.</p>
+<h2>Settings</h2><p>The Settings submenu controls launch at login and the menu-bar countdown. Launch at login starts the app in an idle state. It never resumes a keep-awake session automatically.</p>
+<h2>Recovery</h2><p>Closed-lid mode uses a global macOS sleep override. If the privileged helper itself crashes or is forcibly killed, its cleanup cannot run. Reopen Keep Awake and choose Restore normal sleep. Only an interrupted session owned by this app can be recovered this way.</p>
+<p>If recovery cannot complete, stop other keep-awake apps, then run <code>sudo /usr/bin/pmset -a disablesleep 0</code> in Terminal. Restarting alone should not be treated as proof that the override is off.</p>
+<h2>Remove the app</h2><p>Stop the session, turn off Launch at login, quit, then move Keep Awake from Applications to the Trash. No persistent privileged service or passwordless administrator rule is installed.</p>
+</html>
