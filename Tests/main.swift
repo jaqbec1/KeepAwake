@@ -70,15 +70,39 @@ check("fresh heartbeat is accepted") {
     try writeLease(Lease(sessionID: sessionID, active: true, updated: now))
     try require(Lease.read(url: leaseURL, owner: getuid(), sessionID: sessionID, now: now)?.active == true)
 }
+check("wall-clock changes do not expire a fresh heartbeat") {
+    let lease = Lease(sessionID: sessionID, active: true, updated: now, bootID: "test-boot", updatedUptime: 100)
+    try writeLease(lease)
+    try require(Lease.read(url: leaseURL, owner: getuid(), sessionID: sessionID, now: now.addingTimeInterval(3600), bootID: "test-boot", uptime: 101)?.active == true)
+    try require(Lease.read(url: leaseURL, owner: getuid(), sessionID: sessionID, now: now.addingTimeInterval(-3600), bootID: "test-boot", uptime: 101)?.active == true)
+}
 check("stop request is accepted without extending the session") {
     try writeLease(Lease(sessionID: sessionID, active: false, updated: now))
     try require(Lease.read(url: leaseURL, owner: getuid(), sessionID: sessionID, now: now)?.active == false)
 }
-check("expired and future heartbeats are rejected") {
-    for age in [-21.0, 60.0] {
-        try writeLease(Lease(sessionID: sessionID, active: true, updated: now.addingTimeInterval(age)))
-        try require(Lease.read(url: leaseURL, owner: getuid(), sessionID: sessionID, now: now) == nil)
+check("stale and future monotonic heartbeats are rejected") {
+    for heartbeatUptime in [79.0, 101.0] {
+        try writeLease(Lease(sessionID: sessionID, active: true, updated: now, bootID: "test-boot", updatedUptime: heartbeatUptime))
+        try require(Lease.read(url: leaseURL, owner: getuid(), sessionID: sessionID, now: now, bootID: "test-boot", uptime: 100) == nil)
     }
+}
+check("monotonic heartbeat expiry uses the exact twenty-second boundary") {
+    let lease = Lease(sessionID: sessionID, active: true, updated: now, bootID: "test-boot", updatedUptime: 100)
+    try writeLease(lease)
+    try require(Lease.read(url: leaseURL, owner: getuid(), sessionID: sessionID, bootID: "test-boot", uptime: 100) != nil)
+    try require(Lease.read(url: leaseURL, owner: getuid(), sessionID: sessionID, bootID: "test-boot", uptime: 120) == nil)
+}
+check("heartbeats from another boot are rejected") {
+    try writeLease(Lease(sessionID: sessionID, active: true, updated: now, bootID: "previous-boot", updatedUptime: 100))
+    try require(Lease.read(url: leaseURL, owner: getuid(), sessionID: sessionID, now: now, bootID: "current-boot", uptime: 101) == nil)
+}
+check("legacy wall-clock-only heartbeats fail closed") {
+    let encoded = try JSONEncoder().encode(Lease(sessionID: sessionID, active: true, updated: now))
+    var object = try JSONSerialization.jsonObject(with: encoded) as! [String: Any]
+    object.removeValue(forKey: "bootID")
+    object.removeValue(forKey: "updatedUptime")
+    try JSONSerialization.data(withJSONObject: object).write(to: leaseURL, options: .atomic)
+    try require(Lease.read(url: leaseURL, owner: getuid(), sessionID: sessionID) == nil)
 }
 check("heartbeat from another session or owner is rejected") {
     try writeLease(Lease(sessionID: sessionID, active: true, updated: now))
@@ -111,8 +135,9 @@ check("an inaccessible root process does not trigger helper recovery") {
     var status = HelperStatus(sessionID: sessionID, owner: getuid(), helper: rootProcess, state: "running", needsRestore: true, started: Date(), reason: "")
     try require(!status.needsRecovery, "Permission denied does not mean the helper exited")
     try require(!status.hasFinished, "Keep sending heartbeats while the helper is running")
-    status.state = "stopped"
+    status.state = "recoveryRequired"
     try require(status.hasFinished)
+    try require(status.needsRecovery, "An explicit recovery journal must remain actionable after PID reuse")
 }
 check("an exited process is detected and allows recovery") {
     let process = Process()

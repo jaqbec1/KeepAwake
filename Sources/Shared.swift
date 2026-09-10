@@ -6,7 +6,7 @@ import Darwin
 
 enum AppInfo {
     static let identifier = "sh.holistic.keepawake"
-    static let version = "1.0.2"
+    static let version = "1.1.0"
     static let runtimeDirectory = "/private/var/run/sh.holistic.keepawake"
     static let statusURL = URL(fileURLWithPath: runtimeDirectory).appendingPathComponent("session.json")
 }
@@ -145,12 +145,35 @@ struct ProcessIdentity: Codable, Equatable {
     }
 }
 
+enum BootClock {
+    static func identifier() -> String? {
+        var size = 0
+        guard sysctlbyname("kern.bootsessionuuid", nil, &size, nil, 0) == 0,
+              size > 1, size <= 128 else { return nil }
+        var value = [CChar](repeating: 0, count: size)
+        guard sysctlbyname("kern.bootsessionuuid", &value, &size, nil, 0) == 0 else { return nil }
+        return String(cString: value)
+    }
+}
+
 struct Lease: Codable {
     var sessionID: String
     var active: Bool
+    // Keep the wall timestamp so older helpers can decode new leases. New helpers
+    // require the boot-scoped fields below and reject old wall-clock-only leases.
     var updated: Date
+    var bootID: String
+    var updatedUptime: TimeInterval
 
-    static func read(url: URL, owner: uid_t, sessionID: String, now: Date = Date()) -> Lease? {
+    init(sessionID: String, active: Bool, updated: Date, bootID: String = BootClock.identifier() ?? "", updatedUptime: TimeInterval = ProcessInfo.processInfo.systemUptime) {
+        self.sessionID = sessionID
+        self.active = active
+        self.updated = updated
+        self.bootID = bootID
+        self.updatedUptime = updatedUptime
+    }
+
+    static func read(url: URL, owner: uid_t, sessionID: String, now: Date = Date(), bootID: String? = BootClock.identifier(), uptime: TimeInterval? = nil) -> Lease? {
         let descriptor = open(url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
         guard descriptor >= 0 else { return nil }
         defer { close(descriptor) }
@@ -164,8 +187,11 @@ struct Lease: Codable {
         guard count > 0,
               let lease = try? JSONDecoder().decode(Lease.self, from: Data(bytes.prefix(count))),
               lease.sessionID == sessionID,
-              now.timeIntervalSince(lease.updated) >= -5,
-              now.timeIntervalSince(lease.updated) < 20 else { return nil }
+              let bootID, !bootID.isEmpty, lease.bootID == bootID else { return nil }
+        let observedUptime = uptime ?? ProcessInfo.processInfo.systemUptime
+        guard
+              observedUptime >= lease.updatedUptime,
+              observedUptime - lease.updatedUptime < 20 else { return nil }
         return lease
     }
 }
@@ -204,5 +230,5 @@ struct HelperStatus: Codable {
     }
 
     var hasFinished: Bool { state == "stopped" || state == "recoveryRequired" || helper.hasExited }
-    var needsRecovery: Bool { needsRestore && helper.hasExited }
+    var needsRecovery: Bool { needsRestore && (state == "recoveryRequired" || helper.hasExited) }
 }

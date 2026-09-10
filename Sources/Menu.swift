@@ -6,6 +6,7 @@ import ServiceManagement
     var statusItem: NSStatusItem!
     let menu = NSMenu()
     var statusLine: NSMenuItem?
+    var outcomeLine: NSMenuItem?
     var powerLine: NSMenuItem?
     var actionItem: NSMenuItem?
     var quitPending = false
@@ -26,8 +27,7 @@ import ServiceManagement
         model.onUpdate = { [weak self] in self?.updateStatus() }
         model.onStopped = { [weak self] in
             guard let self, self.quitPending else { return }
-            self.model.prepareToQuit()
-            NSApp.reply(toApplicationShouldTerminate: true)
+            self.completeQuit()
         }
         updateStatus()
         if !UserDefaults.standard.bool(forKey: "hasLaunchedNativeMenu") {
@@ -69,6 +69,7 @@ import ServiceManagement
         menu.removeAllItems()
         menu.addItem(NSMenuItem.sectionHeader(title: "Keep Awake"))
         statusLine = item("", enabled: false, image: model.isRunning ? "cup.and.saucer.fill" : "cup.and.saucer")
+        outcomeLine = item("", enabled: false)
         powerLine = item(model.power.description, enabled: false, image: model.power.onAC == true ? "powerplug" : "battery.75percent")
         menu.addItem(.separator())
 
@@ -117,6 +118,8 @@ import ServiceManagement
         preferences.addItem(.separator())
         item("About Keep Awake", action: #selector(about), into: preferences)
         settings.submenu = preferences
+        item("Session details…", action: #selector(sessionDetails))
+        item("Copy diagnostics", action: #selector(copyDiagnostics))
         item("User guide", action: #selector(help))
         item("Quit Keep Awake", action: #selector(quit), key: "q")
         updateStatus()
@@ -135,6 +138,9 @@ import ServiceManagement
         button.setAccessibilityValue(model.statusTitle + (model.isRunning ? ", " + model.countdown : ""))
         statusLine?.title = model.isRunning ? "\(model.countdown)\(model.remaining == nil ? "" : " remaining")" : model.statusTitle
         statusLine?.toolTip = model.message
+        let outcome = model.message.replacingOccurrences(of: "\n", with: " ")
+        outcomeLine?.title = outcome.count > 64 ? String(outcome.prefix(63)) + "…" : outcome
+        outcomeLine?.setAccessibilityLabel(model.message)
         powerLine?.title = model.power.description
         actionItem?.title = model.isRunning ? "Stop session" : model.phase == .starting ? "Waiting for approval…" : model.phase == .stopping ? "Restoring normal sleep…" : "Start session"
         actionItem?.isEnabled = model.phase == .idle || model.phase == .running
@@ -168,6 +174,35 @@ import ServiceManagement
     @objc func toggleLogin() { model.setLogin(!model.loginEnabled) }
     @objc func setCutoff(_ sender: NSMenuItem) { model.batteryFloor = sender.tag }
     @objc func recover() { model.recover() }
+    @objc func sessionDetails() {
+        menu.cancelTracking()
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = model.statusTitle
+        alert.informativeText = [model.message, model.errorMessage == model.message ? nil : model.errorMessage]
+            .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n\n")
+        alert.addButton(withTitle: "Close")
+        alert.addButton(withTitle: "Copy diagnostics")
+        if alert.runModal() == .alertSecondButtonReturn { copyDiagnostics() }
+    }
+    @objc func copyDiagnostics() {
+        let version = ProcessInfo.processInfo.operatingSystemVersion
+        // Keep this an allowlist: raw authorization errors can contain local paths.
+        let report = """
+        Keep Awake \(AppInfo.version)
+        macOS \(version.majorVersion).\(version.minorVersion).\(version.patchVersion)
+        State: \(model.statusTitle)
+        Selected mode: \(model.mode.rawValue)
+        Duration: \(durationTitle)
+        Power: \(model.power.description)
+        Charger only: \(model.chargerOnly)
+        Battery cutoff: \(model.batteryFloor)%
+        Recovery offered: \(model.needsRecovery)
+        Error: \(model.errorMessage == nil ? "none" : "present; see Session details")
+        """
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(report, forType: .string)
+    }
     @objc func openLoginSettings() { SMAppService.openSystemSettingsLoginItems() }
     @objc func about() { NSApp.activate(ignoringOtherApps: true); NSApp.orderFrontStandardAboutPanel(nil) }
     @objc func help() {
@@ -200,6 +235,12 @@ import ServiceManagement
         menu.popUp(positioning: nil, at: NSPoint(x: frame.minX, y: frame.minY - 4), in: nil)
     }
     @objc func quit() { menu.cancelTracking(); NSApp.terminate(nil) }
+    private func completeQuit() {
+        guard quitPending else { return }
+        quitPending = false
+        model.prepareToQuit()
+        NSApp.reply(toApplicationShouldTerminate: true)
+    }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showMenu(); return false }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         if model.phase == .starting {
@@ -212,8 +253,7 @@ import ServiceManagement
             quitPending = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 12) { [weak self] in
                 guard let self, self.quitPending, self.model.phase != .idle else { return }
-                self.model.prepareToQuit()
-                NSApp.reply(toApplicationShouldTerminate: true)
+                self.completeQuit()
             }
             return .terminateLater
         }
