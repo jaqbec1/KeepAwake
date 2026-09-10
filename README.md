@@ -10,7 +10,7 @@
   <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-1.1.0_candidate-orange?style=flat-square" alt="Version 1.1.0 candidate"></a>
   <a href="#install"><img src="https://img.shields.io/badge/macOS-14%2B-black?style=flat-square&amp;logo=apple" alt="macOS 14 or later"></a>
   <a href="#install"><img src="https://img.shields.io/badge/chip-Apple_silicon-gray?style=flat-square" alt="Apple silicon"></a>
-  <a href="#homebrew"><img src="https://img.shields.io/badge/Homebrew-planned-gray?style=flat-square&amp;logo=homebrew" alt="Homebrew installation planned"></a>
+  <a href="#homebrew"><img src="https://img.shields.io/badge/Homebrew-available-orange?style=flat-square&amp;logo=homebrew" alt="Homebrew installation available"></a>
 </p>
 
 <p align="center"><a href="#install">Install</a> · <a href="#why-i-built-it">Why I built it</a> · <a href="docs/technical-notes.md">Under the hood</a> · <a href="CHANGELOG.md">Changelog</a></p>
@@ -39,7 +39,7 @@ Your screen-lock settings stay in effect. Keep Awake doesn't simulate typing or 
 
 ## Install
 
-**Apple silicon · macOS 14 or later.** The current version is a development candidate. There is no published release installer yet; build one locally with Xcode's macOS SDK and Swift compiler.
+**Apple silicon · macOS 14 or later.** The current version is a development candidate. Install through Homebrew below, download the ZIP or DMG from [releases](https://github.com/jaqbec1/KeepAwake/releases), or build locally with Xcode's macOS SDK and Swift compiler.
 
 ```sh
 git clone https://github.com/jaqbec1/KeepAwake.git
@@ -54,7 +54,19 @@ Local builds are ad hoc signed, not Developer ID signed or notarized. If you're 
 
 ### Homebrew
 
-Homebrew installation is planned. There isn't a published cask or a working `brew install` command yet. For now, use the build instructions above.
+```sh
+brew tap jaqbec1/keepawake https://github.com/jaqbec1/KeepAwake.git
+brew install --cask jaqbec1/keepawake/keep-awake
+```
+
+For later updates, stop your session and quit Keep Awake, then run:
+
+```sh
+brew update
+brew upgrade --cask jaqbec1/keepawake/keep-awake
+```
+
+To install in your personal Applications folder, add `--appdir="$HOME/Applications"` to the install command. If you already installed it manually, quit that copy and move it aside before installing through Homebrew. Homebrew preserves the app's preferences. This cask uses the same ad hoc signed development build as the release downloads; it does not add notarization.
 
 ## Closed-lid mode
 
