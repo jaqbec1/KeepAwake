@@ -6,7 +6,7 @@ The menu uses AppKit's standard background, typography, selection, separators, c
 
 ## Install
 
-Open `dist/Keep Awake.dmg`, then drag the app to Applications. The ZIP contains the same app. A local copy is installed at `/Users/jmatyka/Applications/Keep Awake.app`.
+Build the installer with `./scripts/package.sh`, then open `dist/Keep Awake.dmg` and drag the app to Applications. The ZIP contains the same app. Generated installers are not included in a source checkout. Stop any session and quit the existing app before replacing it.
 
 This is an ad-hoc signed local build. It is not Developer ID signed or notarized for public distribution. No credentials or signing identities are included in the project.
 
@@ -16,12 +16,11 @@ Requires Xcode's macOS SDK and Swift compiler. No package downloads are needed.
 
 ```sh
 ./scripts/build.sh
-./scripts/test.sh --live-assertion
-python3 Tests/helper_integration.py
+./scripts/test.sh
 ./scripts/package.sh
 ```
 
-The live assertion check briefly creates and releases an ordinary idle-sleep assertion. It does not change the global closed-lid setting. The helper integration tests compile a temporary fixture with fake power services, then exercise the real helper loop.
+The default test command runs the safe suites without administrator approval or changes to global sleep settings. Use `./scripts/test.sh --live-assertion` only when you also want the check that briefly creates and releases an ordinary idle-sleep assertion. The helper integration tests still compile a temporary fixture with fake power services. Session-controller tests compile the unchanged production controller and app adapter; they supply isolated external dependencies.
 
 ## Session behavior
 
@@ -33,20 +32,23 @@ The live assertion check briefly creates and releases an ordinary idle-sleep ass
 - Closed-lid mode puts the display to sleep on the lid-close transition.
 - Launch at login starts the app idle. No session resumes automatically.
 - Screen-lock settings remain unchanged. The app does not simulate keyboard or mouse activity.
+- The menu shows the last session outcome. Session details displays the full explanation. Copy diagnostics includes app and macOS versions, state, and selected options, excluding raw authorization errors and file paths.
 
 ## Privileged helper
 
 The main application runs as the user. For a closed-lid session, macOS authorizes the bundled helper for that session. It is not installed as a launch daemon and adds no passwordless sudo rule.
 
-The helper takes an exclusive lock in a root-owned runtime directory and refuses to start if the global sleep override is already enabled. It journals ownership before making the change. After each power-setting command, it waits up to three seconds for the kernel to confirm the requested state. A heartbeat file is checked for its owner, session UUID, age, regular-file type, link count, and size. Symlinks are rejected.
+The helper takes an exclusive lock in a root-owned runtime directory and refuses to start if the global sleep override is already enabled. It journals ownership before making the change. After each power-setting command, it waits up to three seconds for the kernel to confirm the requested state. A heartbeat file is checked for its owner, session UUID, boot identity, monotonic age, regular-file type, link count, and size. Symlinks are rejected. Clock corrections do not change heartbeat freshness.
 
 The helper verifies the app's process ID, owner, and creation time. The app treats denied access to the root helper's process metadata as unknown, and only infers an exit from a missing process or a confirmed identity mismatch. It also reads the helper's session status. It restores normal sleep when the app exits, the heartbeat expires after 20 seconds, the timer ends, the charger disconnects, the battery reaches its cutoff, or the helper receives a normal termination signal. Stop requests are normally picked up within one second.
 
 A crash or force-kill of the privileged helper itself cannot run cleanup. On reopening, the app offers Restore normal sleep for its own interrupted session. The root-owned journal limits recovery to a session this app recorded. A global setting cannot arbitrate with another keep-awake utility; do not run multiple apps that change it simultaneously.
 
-The runtime journal is `/private/var/run/sh.holistic.keepawake/session.json`. Session heartbeat files are in the user's temporary directory. Preferences use the `sh.holistic.keepawake` defaults domain.
+The runtime journal is `/private/var/run/sh.holistic.keepawake/session.json`. Session heartbeat files are in the user's temporary directory. Preferences use the `sh.holistic.keepawake` defaults domain. The sleep override can persist; restart behavior and journal survival still need hardware verification. Restarting alone is not proof that normal sleep has been restored.
 
 ## Verification
+
+The 1.1.0 candidate passes 59 safe automated checks, strict controller concurrency compilation, and local artifact verification. It has not replaced the installed 1.0.2 app. See the [candidate results](docs/verification-1.1.0.md) and [manual verification procedure](docs/verification.md) for exact coverage and pending checks.
 
 On 9 September 2026, 24 policy, heartbeat, process identity, root-process visibility, and live assertion checks passed. Twelve helper integration checks also passed, covering stop requests, app crashes, stale heartbeats, termination signals, timer expiry, charger loss, low battery, partial activation failure, delayed activation and restoration, and missing confirmation in either direction.
 
@@ -59,7 +61,8 @@ The installed app's ordinary Start and Stop controls were exercised, and `pmset 
 ## Files
 
 - `Sources/Menu.swift`: native menu, custom-duration dialog, app lifecycle.
-- `Sources/App.swift`: session state, preferences, IOKit assertions, authorization, heartbeat.
+- `Sources/App.swift`: preferences, menu-facing model, and macOS service adapters.
+- `Sources/SessionController.swift`: testable session lifecycle, heartbeat, stop, and recovery coordination.
 - `Sources/Shared.swift`: power readings, session policy, process identity, request and journal types.
 - `Sources/Helper.swift`: privileged session lifecycle, cleanup, recovery.
 - `Resources/Help.html`: bundled user guide.

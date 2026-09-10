@@ -16,6 +16,7 @@ import time
 
 project = Path(__file__).resolve().parents[1]
 apple_epoch = 978307200
+boot_id = subprocess.check_output(['/usr/sbin/sysctl', '-n', 'kern.bootsessionuuid'], text=True).strip()
 
 with tempfile.TemporaryDirectory(prefix='keepawake-helper-test-') as temporary:
     root = Path(temporary)
@@ -78,7 +79,7 @@ import Darwin
 }
 ''')
     for source, binary in [('Helper.swift', 'helper'), ('Owner.swift', 'owner')]:
-        subprocess.run(['xcrun', 'swiftc', '-swift-version', '5', '-module-cache-path', str(project / 'build/module-cache'), str(root / 'Shared.swift'), str(root / source), '-o', str(root / binary)], check=True)
+        subprocess.run(['xcrun', 'swiftc', '-swift-version', '5', '-module-cache-path', str(root / 'module-cache'), str(root / 'Shared.swift'), str(root / source), '-o', str(root / binary)], check=True)
 
     def wait_for(check, timeout=8):
         deadline = time.monotonic() + timeout
@@ -91,7 +92,7 @@ import Darwin
             time.sleep(.05)
         raise AssertionError('Expected state did not arrive')
 
-    def run_case(name, action, *, minutes=0, charger=True, enable_error=False, enable_delay=0, restore_delay=0, ignore_enable=False, ignore_restore=False):
+    def run_case(name, action, *, minutes=0, charger=True, enable_error=False, enable_delay=0, restore_delay=0, ignore_enable=False, ignore_restore=False, check_recovery_lock=False):
         import uuid
         if os.environ.get('KEEP_AWAKE_TEST_CASE') not in (None, name):
             return
@@ -106,9 +107,10 @@ import Darwin
         owner = subprocess.Popen([str(root / 'owner')], stdout=subprocess.PIPE, text=True)
         identity = json.loads(owner.stdout.readline())
         session = str(uuid.uuid4())
-        def heartbeat(active=True, age=0):
+        def heartbeat(active=True, age=0, wall_age=None):
             temp = folder / 'new.json'
-            temp.write_text(json.dumps({'sessionID': session, 'active': active, 'updated': time.time() - apple_epoch + age}))
+            updated_wall_age = age if wall_age is None else wall_age
+            temp.write_text(json.dumps({'sessionID': session, 'active': active, 'updated': time.time() - apple_epoch + updated_wall_age, 'bootID': boot_id, 'updatedUptime': time.monotonic() + age}))
             temp.replace(lease)
         heartbeat()
         request = {'sessionID': session, 'parent': identity, 'leasePath': str(lease), 'options': {'mode': 'closedLid', 'minutes': minutes, 'chargerOnly': charger, 'batteryFloor': 20, 'keepDisplayOn': False}}
@@ -118,7 +120,14 @@ import Darwin
         try:
             if not enable_error and not ignore_enable:
                 wait_for(lambda: json.loads((runtime / 'session.json').read_text())['state'] == 'running')
-                action(process, owner, heartbeat, power)
+                if check_recovery_lock:
+                    recovery = subprocess.run([str(root / 'helper'), '--recover', str(os.getuid())], env=env, capture_output=True, text=True)
+                    assert recovery.returncode == 1, (name, recovery.stderr)
+                    assert 'already running' in recovery.stderr, (name, recovery.stderr)
+                    assert override.read_text() == '1', (name, 'active helper lost its override')
+                    heartbeat(False)
+                else:
+                    action(process, owner, heartbeat, power)
             out, err = process.communicate(timeout=10)
             record = json.loads((runtime / 'session.json').read_text())
             assert override.read_text() == ('1' if ignore_restore else '0'), (name, 'unexpected final override', err)
@@ -134,9 +143,46 @@ import Darwin
             if owner.poll() is None:
                 owner.kill(); owner.wait()
 
+    def run_inaccessible_pid_recovery():
+        import uuid
+        name = 'inaccessible_reused_pid_allows_explicit_recovery'
+        if os.environ.get('KEEP_AWAKE_TEST_CASE') not in (None, name):
+            return
+        folder = root / name
+        runtime = folder / 'runtime'
+        runtime.mkdir(parents=True)
+        override = folder / 'override'
+        power = folder / 'power.json'
+        override.write_text('1')
+        power.write_text(json.dumps({'ac': True, 'battery': 80}))
+        status = {
+            'sessionID': str(uuid.uuid4()),
+            'owner': os.getuid(),
+            'helper': {'pid': 1, 'uid': 0, 'startedSeconds': 0, 'startedMicroseconds': 0},
+            'state': 'recoveryRequired',
+            'needsRestore': True,
+            'started': time.time() - apple_epoch,
+            'reason': 'Test interrupted session',
+        }
+        (runtime / 'session.json').write_text(json.dumps(status))
+        env = {**os.environ, 'TEST_RUNTIME': str(runtime), 'TEST_OVERRIDE': str(override), 'TEST_POWER': str(power)}
+        recovery = subprocess.run([str(root / 'helper'), '--recover', str(os.getuid())], env=env, capture_output=True, text=True)
+        record = json.loads((runtime / 'session.json').read_text())
+        assert recovery.returncode == 0, (name, recovery.stderr)
+        assert override.read_text() == '0', (name, 'sleep was not restored')
+        assert record['state'] == 'stopped' and record['needsRestore'] is False, (name, record)
+        print('PASS', name, flush=True)
+
+    def wall_clock_jump(process, owner, heartbeat, power):
+        heartbeat(wall_age=3600)
+        time.sleep(1.2)
+        assert process.poll() is None, 'wall-clock jump stopped an active helper'
+        heartbeat(False, wall_age=-3600)
+
     run_case('stop_request_restores_sleep', lambda process, owner, heartbeat, power: heartbeat(False))
     run_case('app_crash_restores_sleep', lambda process, owner, heartbeat, power: (owner.kill(), owner.wait()))
     run_case('stale_heartbeat_restores_sleep', lambda process, owner, heartbeat, power: heartbeat(age=-30))
+    run_case('wall_clock_jump_keeps_session_alive', wall_clock_jump)
     run_case('helper_termination_restores_sleep', lambda process, owner, heartbeat, power: process.send_signal(signal.SIGTERM))
     run_case('timer_expiry_restores_sleep', lambda *args: None, minutes=1)
     run_case('charger_loss_restores_sleep', lambda process, owner, heartbeat, power: power.write_text(json.dumps({'ac': False, 'battery': 80})))
@@ -146,4 +192,6 @@ import Darwin
     run_case('delayed_restoration_is_confirmed', lambda process, owner, heartbeat, power: heartbeat(False), restore_delay=.4)
     run_case('unconfirmed_activation_fails_and_restores', lambda *args: None, ignore_enable=True)
     run_case('unconfirmed_restoration_requires_recovery', lambda process, owner, heartbeat, power: heartbeat(False), ignore_restore=True)
+    run_case('active_helper_blocks_recovery', lambda *args: None, check_recovery_lock=True)
+    run_inaccessible_pid_recovery()
 print('Selected helper integration checks passed without changing macOS power settings.')
