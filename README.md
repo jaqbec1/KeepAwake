@@ -1,73 +1,86 @@
-# Keep Awake
+<p align="center">
+  <img src="docs/images/app-icon.png" width="96" height="96" alt="Keep Awake coffee cup icon">
+</p>
 
-A native macOS menu bar app for ordinary keep-awake and closed-lid sessions. Built for Apple silicon Macs on macOS 14 or later, without an App Store dependency.
+<h1 align="center">Keep Awake</h1>
 
-The menu uses AppKit's standard background, typography, selection, separators, checkmarks, and submenus. Click the cup to start or stop a session, choose a duration, or change battery and display options.
+<p align="center">Keep your Mac awake from the menu bar.</p>
+
+<p align="center">
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-1.1.0_candidate-orange?style=flat-square" alt="Version 1.1.0 candidate"></a>
+  <a href="#install"><img src="https://img.shields.io/badge/macOS-14%2B-black?style=flat-square&amp;logo=apple" alt="macOS 14 or later"></a>
+  <a href="#install"><img src="https://img.shields.io/badge/chip-Apple_silicon-gray?style=flat-square" alt="Apple silicon"></a>
+  <a href="#homebrew"><img src="https://img.shields.io/badge/Homebrew-planned-gray?style=flat-square&amp;logo=homebrew" alt="Homebrew installation planned"></a>
+</p>
+
+<p align="center"><a href="#install">Install</a> · <a href="#why-i-built-it">Why I built it</a> · <a href="docs/technical-notes.md">Under the hood</a> · <a href="CHANGELOG.md">Changelog</a></p>
+
+Keep a build, download, or coding agent running while you step away. Click the coffee cup in your menu bar, choose a duration, and start. Stop it when you're done.
+
+<p align="center">
+  <img src="docs/images/keep-awake-menu.png" width="292" alt="Keep Awake menu showing a two-hour duration, closed-lid mode, and only-while-plugged-in enabled.">
+</p>
+
+## Why I built it
+
+I wasn't about to pay for a tool to keep my Mac awake when I could build one myself. So I did.
+
+I'm sharing it so you can just use it. No need to pay for one or spend an hour of your life making your own. I've already spent that hour.
+
+## What it does
+
+- Run for a preset duration, set a timer from 1 minute to 24 hours, or keep going until you stop it.
+- Let the display turn off while the Mac stays awake, or keep the display on too.
+- Use closed-lid mode with administrator approval from macOS for each session.
+- Stop when the charger disconnects, at a battery cutoff you choose, or when macOS reports serious thermal pressure.
+- Start and stop from a native macOS menu. Launch at login opens the app without starting a session.
+
+Your screen-lock settings stay in effect. Keep Awake doesn't simulate typing or mouse movement.
 
 ## Install
 
-Build the installer with `./scripts/package.sh`, then open `dist/Keep Awake.dmg` and drag the app to Applications. The ZIP contains the same app. Generated installers are not included in a source checkout. Stop any session and quit the existing app before replacing it.
+**Apple silicon · macOS 14 or later.** The current version is a development candidate. There is no published release installer yet; build one locally with Xcode's macOS SDK and Swift compiler.
 
-This is an ad-hoc signed local build. It is not Developer ID signed or notarized for public distribution. No credentials or signing identities are included in the project.
+```sh
+git clone https://github.com/jaqbec1/KeepAwake.git
+cd KeepAwake
+./scripts/package.sh
+open "dist/Keep Awake.dmg"
+```
 
-## Build and check
+Drag **Keep Awake** to Applications, then open it and look for the coffee cup in the menu bar. The build also produces a ZIP in `dist/`.
 
-Requires Xcode's macOS SDK and Swift compiler. No package downloads are needed.
+Local builds are ad hoc signed, not Developer ID signed or notarized. If you're replacing an earlier build, stop its session and quit the app first.
+
+### Homebrew
+
+Homebrew installation is planned. There isn't a published cask or a working `brew install` command yet. For now, use the build instructions above.
+
+## Closed-lid mode
+
+Ordinary sessions prevent idle sleep. Closed-lid mode changes a system-wide sleep setting through a helper authorized by macOS. It is designed to restore normal sleep when you stop, the timer expires, or the app exits.
+
+A force-killed helper or an abrupt restart can leave the sleep override enabled. If the app offers **Restore normal sleep**, use it before removing the app. Avoid running another utility that changes the same setting at the same time.
+
+The 1.1.0 candidate has automated checks, but physical lid-close, live restoration, and crash/restart checks are still pending. See the [verification results](docs/verification-1.1.0.md) for completed tests and the [manual checks](docs/verification.md) for what remains.
+
+## Development
 
 ```sh
 ./scripts/build.sh
 ./scripts/test.sh
-./scripts/package.sh
 ```
 
-The default test command runs the safe suites without administrator approval or changes to global sleep settings. Use `./scripts/test.sh --live-assertion` only when you also want the check that briefly creates and releases an ordinary idle-sleep assertion. The helper integration tests still compile a temporary fixture with fake power services. Session-controller tests compile the unchanged production controller and app adapter; they supply isolated external dependencies.
+The default tests don't request administrator approval or change global sleep settings. No package downloads are needed to build the app.
 
-## Session behavior
+- [Technical notes](docs/technical-notes.md): session behavior, helper design, recovery, and source layout.
+- [Changelog](CHANGELOG.md): changes between versions.
+- [Report a bug](https://github.com/jaqbec1/KeepAwake/issues): include your macOS version, app version, and what happened. **Copy diagnostics** in the app can help.
 
-- Start with a preset duration, a custom 1–1,440 minute timer, or Until stopped.
-- Ordinary sessions use IOKit assertions. Closing the app releases them.
-- Closed-lid sessions use `pmset disablesleep`. macOS asks for administrator approval for each session.
-- Only while plugged in ends the session when the charger is disconnected.
-- Battery sessions stop at the selected cutoff. All sessions stop if macOS reports serious or critical thermal pressure, or the power source cannot be read.
-- Closed-lid mode puts the display to sleep on the lid-close transition.
-- Launch at login starts the app idle. No session resumes automatically.
-- Screen-lock settings remain unchanged. The app does not simulate keyboard or mouse activity.
-- The menu shows the last session outcome. Session details displays the full explanation. Copy diagnostics includes app and macOS versions, state, and selected options, excluding raw authorization errors and file paths.
+## License
 
-## Privileged helper
+A license has not been selected yet.
 
-The main application runs as the user. For a closed-lid session, macOS authorizes the bundled helper for that session. It is not installed as a launch daemon and adds no passwordless sudo rule.
+## Uninstall
 
-The helper takes an exclusive lock in a root-owned runtime directory and refuses to start if the global sleep override is already enabled. It journals ownership before making the change. After each power-setting command, it waits up to three seconds for the kernel to confirm the requested state. A heartbeat file is checked for its owner, session UUID, boot identity, monotonic age, regular-file type, link count, and size. Symlinks are rejected. Clock corrections do not change heartbeat freshness.
-
-The helper verifies the app's process ID, owner, and creation time. The app treats denied access to the root helper's process metadata as unknown, and only infers an exit from a missing process or a confirmed identity mismatch. It also reads the helper's session status. It restores normal sleep when the app exits, the heartbeat expires after 20 seconds, the timer ends, the charger disconnects, the battery reaches its cutoff, or the helper receives a normal termination signal. Stop requests are normally picked up within one second.
-
-A crash or force-kill of the privileged helper itself cannot run cleanup. On reopening, the app offers Restore normal sleep for its own interrupted session. The root-owned journal limits recovery to a session this app recorded. A global setting cannot arbitrate with another keep-awake utility; do not run multiple apps that change it simultaneously.
-
-The runtime journal is `/private/var/run/sh.holistic.keepawake/session.json`. Session heartbeat files are in the user's temporary directory. Preferences use the `sh.holistic.keepawake` defaults domain. The sleep override can persist; restart behavior and journal survival still need hardware verification. Restarting alone is not proof that normal sleep has been restored.
-
-## Verification
-
-The 1.1.0 candidate passes 59 safe automated checks, strict controller concurrency compilation, and local artifact verification. It has not replaced the installed 1.0.2 app. See the [candidate results](docs/verification-1.1.0.md) and [manual verification procedure](docs/verification.md) for exact coverage and pending checks.
-
-On 9 September 2026, 24 policy, heartbeat, process identity, root-process visibility, and live assertion checks passed. Twelve helper integration checks also passed, covering stop requests, app crashes, stale heartbeats, termination signals, timer expiry, charger loss, low battery, partial activation failure, delayed activation and restoration, and missing confirmation in either direction.
-
-Version 1.0.1 fixes a premature activation check in 1.0.0. The previous helper read the kernel state once, immediately after `pmset` returned. A test with delayed power-service updates reproduced the failure before the fix and passed afterward. Activation, cleanup, and recovery now wait for confirmation; the launcher allows time for those bounded waits.
-
-Version 1.0.2 fixes immediate session termination after successful activation. macOS denied the ordinary app access to the root helper's BSD process details. The app incorrectly treated this as an exit and removed the heartbeat on its next timer tick. A read-only check against an existing root process reproduced this error before the fix. The regression tests also check that an actual process exit still permits recovery.
-
-The installed app's ordinary Start and Stop controls were exercised, and `pmset -g assertions` confirmed the app's assertion. The charger-only guard was also checked on battery. Closed-lid activation was tested with administrator approval in version 1.0.2. The helper stayed running beyond 30 seconds, macOS reported `SleepDisabled 1`, and the heartbeat continued updating. A physical lid-close check and live Stop/restoration check are still pending.
-
-## Files
-
-- `Sources/Menu.swift`: native menu, custom-duration dialog, app lifecycle.
-- `Sources/App.swift`: preferences, menu-facing model, and macOS service adapters.
-- `Sources/SessionController.swift`: testable session lifecycle, heartbeat, stop, and recovery coordination.
-- `Sources/Shared.swift`: power readings, session policy, process identity, request and journal types.
-- `Sources/Helper.swift`: privileged session lifecycle, cleanup, recovery.
-- `Resources/Help.html`: bundled user guide.
-- `Tests/`: policy and isolated helper integration checks.
-
-## Remove
-
-Stop the session, turn off Launch at login, quit the app, and move it to the Trash. If recovery is shown, restore normal sleep before removing the app. The bundled user guide has the manual recovery command.
+Stop the session, turn off **Launch at login**, quit the app, and move it to the Trash. If recovery is shown, restore normal sleep first.
