@@ -10,6 +10,27 @@ import zipfile
 PROJECT = Path(__file__).resolve().parents[1]
 
 
+def run_artifact_check(
+    checkout: Path, app: Path, archive: Path | None = None, image: Path | None = None
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            checkout / "scripts/check-release.sh",
+            app,
+            archive or "",
+            image or "",
+        ],
+        cwd=checkout,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+
+
+def assert_rejected(result: subprocess.CompletedProcess[str], reason: str) -> None:
+    assert result.returncode != 0, f"artifact check accepted {reason}:\n{result.stdout}"
+
+
 def main() -> None:
     with tempfile.TemporaryDirectory(prefix="keepawake-package-test-") as temporary:
         checkout = Path(temporary) / "KeepAwake"
@@ -49,7 +70,64 @@ def main() -> None:
         missing = expected.difference(names)
         assert not missing, f"archive is missing: {sorted(missing)}"
 
-    print("PASS clean package has no stale resources or AppleDouble files")
+        app = checkout / "build/Keep Awake.app"
+        image = checkout / "dist/Keep Awake.dmg"
+        normal = run_artifact_check(checkout, app, archive, image)
+        assert normal.returncode == 0, normal.stdout
+
+        tampered_archive = checkout / "dist/Tampered.zip"
+        with zipfile.ZipFile(archive) as source, zipfile.ZipFile(
+            tampered_archive, "w"
+        ) as destination:
+            for info in source.infolist():
+                contents = source.read(info.filename)
+                if info.filename == "Keep Awake.app/Contents/Resources/Help.html":
+                    contents += b"\ntampered\n"
+                destination.writestr(info, contents)
+        assert_rejected(
+            run_artifact_check(checkout, app, tampered_archive),
+            "a ZIP with a modified signed resource",
+        )
+
+        alternate_app = checkout / "build/Alternate/Keep Awake.app"
+        shutil.copytree(app, alternate_app, symlinks=True)
+        alternate_help = alternate_app / "Contents/Resources/Help.html"
+        alternate_help.write_text(alternate_help.read_text() + "\nalternate release\n")
+        subprocess.run(
+            ["/usr/bin/codesign", "--force", "--sign", "-", alternate_app],
+            check=True,
+        )
+        subprocess.run(
+            ["/usr/bin/codesign", "--verify", "--deep", "--strict", alternate_app],
+            check=True,
+        )
+        alternate_archive = checkout / "dist/Alternate.zip"
+        subprocess.run(
+            [
+                "/usr/bin/ditto",
+                "-c",
+                "-k",
+                "--keepParent",
+                "--norsrc",
+                "--noextattr",
+                alternate_app,
+                alternate_archive,
+            ],
+            check=True,
+        )
+        assert_rejected(
+            run_artifact_check(checkout, app, alternate_archive),
+            "a validly signed ZIP containing a different app payload",
+        )
+
+        corrupt_image = checkout / "dist/Corrupt.dmg"
+        corrupt_image.write_bytes(b"not a disk image")
+        assert_rejected(
+            run_artifact_check(checkout, app, image=corrupt_image),
+            "a corrupt disk image",
+        )
+
+    print("PASS package integrity checks accept the release and reject tampered artifacts")
 
 
 if __name__ == "__main__":

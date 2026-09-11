@@ -5,6 +5,12 @@ cd "${0:A:h:h}"
 app=${1:-"$PWD/build/Keep Awake.app"}
 archive=${2:-}
 image=${3:-}
+extract_root=
+
+cleanup() {
+    [[ -z "$extract_root" ]] || /bin/rm -rf -- "$extract_root"
+}
+trap cleanup EXIT INT TERM
 
 fail() {
     print -u2 "Artifact check failed: $1"
@@ -47,10 +53,69 @@ if [[ -n "$archive" ]]; then
     for entry in "${required_entries[@]}"; do
         print -r -- "$listing" | /usr/bin/grep -Fxq "Keep Awake.app/$entry" || fail "ZIP is missing: Keep Awake.app/$entry"
     done
+
+    extract_root=$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/keepawake-release.XXXXXX")
+    COPYFILE_DISABLE=1 /usr/bin/ditto -x -k "$archive" "$extract_root" || fail "ZIP extraction failed"
+    extracted_app="$extract_root/Keep Awake.app"
+    [[ -d "$extracted_app" && ! -L "$extracted_app" ]] || fail "ZIP does not contain a regular Keep Awake.app bundle"
+    /usr/bin/codesign --verify --deep --strict "$extracted_app" || fail "ZIP app code signature verification failed"
+
+    python3 - "$app" "$extract_root" <<'PY' || fail "ZIP app payload does not match the checked app bundle"
+from pathlib import Path
+import hashlib
+import os
+import stat
+import sys
+
+
+expected_app = Path(sys.argv[1])
+extract_root = Path(sys.argv[2])
+actual_app = extract_root / "Keep Awake.app"
+
+if sorted(path.name for path in extract_root.iterdir()) != ["Keep Awake.app"]:
+    raise SystemExit("ZIP contains content outside Keep Awake.app")
+
+
+def inventory(root: Path) -> dict[str, tuple[object, ...]]:
+    entries: dict[str, tuple[object, ...]] = {}
+    pending = [root]
+    while pending:
+        directory = pending.pop()
+        for entry in os.scandir(directory):
+            path = Path(entry.path)
+            relative = str(path.relative_to(root))
+            metadata = entry.stat(follow_symlinks=False)
+            mode = stat.S_IMODE(metadata.st_mode)
+            if entry.is_symlink():
+                entries[relative] = ("symlink", mode, os.readlink(path))
+            elif entry.is_dir(follow_symlinks=False):
+                entries[relative] = ("directory", mode)
+                pending.append(path)
+            elif entry.is_file(follow_symlinks=False):
+                digest = hashlib.sha256()
+                with path.open("rb") as stream:
+                    for block in iter(lambda: stream.read(1024 * 1024), b""):
+                        digest.update(block)
+                entries[relative] = ("file", mode, digest.digest())
+            else:
+                entries[relative] = ("unsupported", mode)
+    return entries
+
+
+expected = inventory(expected_app)
+actual = inventory(actual_app)
+if expected != actual:
+    missing = sorted(expected.keys() - actual.keys())
+    extra = sorted(actual.keys() - expected.keys())
+    changed = sorted(name for name in expected.keys() & actual.keys() if expected[name] != actual[name])
+    print(f"missing={missing} extra={extra} changed={changed}", file=sys.stderr)
+    raise SystemExit(1)
+PY
 fi
 
 if [[ -n "$image" ]]; then
     [[ -s "$image" && ! -L "$image" ]] || fail "disk image is missing, empty, or is a symlink: $image"
+    /usr/bin/hdiutil verify "$image" || fail "disk image verification failed"
 fi
 
 print "Artifact checks passed for version $app_version."

@@ -87,6 +87,8 @@ The default tests don't request administrator approval or change global sleep se
 
 - [Technical notes](docs/technical-notes.md): session behavior, helper design, recovery, and source layout.
 - [Changelog](CHANGELOG.md): changes between versions.
+- [Release preparation](docs/releasing.md): candidate artifacts, signing, notarization, and acceptance evidence.
+- [Official Homebrew submission](docs/homebrew-submission.md): current eligibility checks and remaining requirements.
 - [Report a bug](https://github.com/jaqbec1/KeepAwake/issues): include your macOS version, app version, and what happened. **Copy diagnostics** in the app can help.
 
 ## License

@@ -18,7 +18,14 @@ jobs:
           python-version: "3.12"
       - name: Run safe checks
         run: ./scripts/test.sh
-      - name: Build app
-        run: ./scripts/build.sh
-      - name: Check app bundle
-        run: ./scripts/check-release.sh
+      - name: Package and verify development candidate
+        run: ./scripts/package.sh
+      - name: Retain tested candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: keep-awake-candidate-${{ github.sha }}
+          path: |
+            dist/Keep Awake.zip
+            dist/Keep Awake.dmg
+          if-no-files-found: error
+          retention-days: 14
