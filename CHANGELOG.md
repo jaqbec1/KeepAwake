@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.1
+
+- Sign Keep Awake and its helper with Developer ID and enable hardened runtime.
+- Notarize GitHub release packages so Gatekeeper can verify downloaded copies.
+
 ## 1.1.0
 
 - Use boot-scoped monotonic heartbeat freshness so clock corrections do not interrupt closed-lid sessions.

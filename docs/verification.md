@@ -60,6 +60,14 @@ Never infer restoration just from a missing process, an idle menu, or a reboot. 
 
 ## Distribution
 
-The current pipeline creates local ad hoc signed artifacts. For a public binary release, additionally verify Developer ID signing, hardened runtime, notarization, and a quarantined download on a clean Mac. Keep signing credentials outside the repository and outside untrusted pull-request jobs.
+For a public release, use a checkout outside cloud-synced folders so macOS can sign the generated bundle without Finder metadata from the sync provider. Use a Developer ID Application certificate and a `notarytool` keychain profile for the same Apple Developer team. Keep signing credentials outside the repository and outside untrusted pull-request jobs.
+
+```sh
+KEEP_AWAKE_SIGN_IDENTITY='Developer ID Application: Your Name (TEAMID)' \
+KEEP_AWAKE_NOTARY_PROFILE='keep-awake-notary' \
+./scripts/package.sh --release
+```
+
+Publish the ZIP and DMG from `dist/release/` after the script verifies their notarization tickets and Gatekeeper accepts them. Use the ZIP's SHA-256 in the Homebrew cask and point the cask at the new release tag. Test a fresh quarantined download on a clean Mac before announcing the release. The regular development command, `./scripts/package.sh`, produces ad hoc packages in `dist/`.
 
 Record observed outcomes separately from this checklist. Mark unperformed checks as pending, not passed.
