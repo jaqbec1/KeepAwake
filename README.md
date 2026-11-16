@@ -7,7 +7,7 @@
 <p align="center">Keep your Mac awake from the menu bar.</p>
 
 <p align="center">
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-1.1.0_candidate-orange?style=flat-square" alt="Version 1.1.0 candidate"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-1.1.1_candidate-orange?style=flat-square" alt="Version 1.1.1 candidate"></a>
   <a href="#install"><img src="https://img.shields.io/badge/macOS-14%2B-black?style=flat-square&amp;logo=apple" alt="macOS 14 or later"></a>
   <a href="#install"><img src="https://img.shields.io/badge/chip-Apple_silicon-gray?style=flat-square" alt="Apple silicon"></a>
   <a href="#homebrew"><img src="https://img.shields.io/badge/Homebrew-available-orange?style=flat-square&amp;logo=homebrew" alt="Homebrew installation available"></a>
@@ -39,7 +39,7 @@ Your screen-lock settings stay in effect. Keep Awake doesn't simulate typing or 
 
 ## Install
 
-**Apple silicon · macOS 14 or later.** The current version is a development candidate. Install through Homebrew below, download the ZIP or DMG from [releases](https://github.com/jaqbec1/KeepAwake/releases), or build locally with Xcode's macOS SDK and Swift compiler.
+**Apple silicon · macOS 14 or later.** Install through Homebrew below or download the ZIP or DMG from [Keep Awake 1.1.1](https://github.com/jaqbec1/KeepAwake/releases/tag/v1.1.1). The packages use Developer ID signing and Apple notarization. To build from source, use Xcode's macOS SDK and Swift compiler.
 
 ```sh
 git clone https://github.com/jaqbec1/KeepAwake.git
@@ -66,7 +66,7 @@ brew update
 brew upgrade --cask jaqbec1/keepawake/keep-awake
 ```
 
-To install in your personal Applications folder, add `--appdir="$HOME/Applications"` to the install command. If you already installed it manually, quit that copy and move it aside before installing through Homebrew. Homebrew preserves the app's preferences. This cask uses the same ad hoc signed development build as the release downloads; it does not add notarization.
+To install in your personal Applications folder, add `--appdir="$HOME/Applications"` to the install command. If you already installed it manually, quit that copy and move it aside before installing through Homebrew. Homebrew preserves the app's preferences and uses the same notarized ZIP as the GitHub release.
 
 ## Closed-lid mode
 

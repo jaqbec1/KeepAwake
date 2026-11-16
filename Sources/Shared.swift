@@ -6,7 +6,7 @@ import Darwin
 
 enum AppInfo {
     static let identifier = "sh.holistic.keepawake"
-    static let version = "1.1.0"
+    static let version = "1.1.1"
     static let runtimeDirectory = "/private/var/run/sh.holistic.keepawake"
     static let statusURL = URL(fileURLWithPath: runtimeDirectory).appendingPathComponent("session.json")
 }

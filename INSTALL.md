@@ -2,7 +2,7 @@
 
 Open Keep Awake.dmg and drag Keep Awake to Applications. You can also put it in your personal Applications folder. Open the app and look for the cup icon in the menu bar.
 
-This build is for Apple silicon Macs running macOS 14 or later. It is locally signed, not notarized for public distribution. The local installation can be tested on this Mac; another Mac may require approval before opening it.
+Keep Awake requires an Apple silicon Mac running macOS 14 or later. Use the latest signed and notarized release for distribution. A local development build may require approval before opening it.
 
 Leave Keep awake with lid closed unchecked to prevent idle sleep. Check it when you need to shut the laptop without stopping a job. That mode asks for administrator approval each session. No administrator password is stored, and no persistent privileged service is installed.
 
